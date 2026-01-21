@@ -1,4 +1,4 @@
-from pydantic import BaseSettings
+from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
     DATABASE_URL: str
@@ -6,7 +6,8 @@ class Settings(BaseSettings):
     GOOGLE_CLIENT_SECRET: str
     JWT_SECRET: str
     JWT_ALGORITHM: str = "HS256"
-
+    SESSION_SECRET: str
+    ALEMBIC_DATABASE_URL: str
     class Config:
         env_file = ".env"
 
