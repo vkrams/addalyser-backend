@@ -1,11 +1,10 @@
-import asyncio
-from app.db.session import engine
-from app.db.base import Base
-from app.db import models  # MUST import
+from app.core.db import engine
+from app.core.db import Base
+from app.db import models  # IMPORTANT: ensure models are imported
 
-async def main():
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-        print("TABLES CREATED")
+def main():
+    Base.metadata.create_all(bind=engine)
+    print("TABLES CREATED")
 
-asyncio.run(main())
+if __name__ == "__main__":
+    main()
