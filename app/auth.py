@@ -108,3 +108,4 @@ def get_session(user: User = Depends(get_current_user)):
         name=user.name,
         auth_provider=user.auth_provider,
     )
+

@@ -15,7 +15,7 @@ class UserResponse(BaseModel):
     name: str
 
 class SessionUser(BaseModel):
-    id: int
+    id: str
     email: EmailStr
     name: str
     auth_provider: str
