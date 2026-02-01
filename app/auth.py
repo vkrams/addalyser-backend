@@ -1,12 +1,30 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from app.database import get_db
 from app.models import User
 from app.schemas import SignupRequest, LoginRequest
 from app.security import hash_password, verify_password, create_access_token
 from app.security import get_current_user
 from app.schemas import SessionUser
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.orm import Session
+from google.oauth2 import id_token
+from google.auth.transport import requests
+
+from app.database import get_db
+from app.config import settings
+from pydantic import BaseModel
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.orm import Session
+from pydantic import BaseModel
+from google.oauth2 import id_token
+from google.auth.transport import requests
+from jose import JWTError
+
+from app.database import get_db
+from app.models import User
+from app.security import create_access_token
+from app.config import settings
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -43,33 +61,41 @@ def login(data: LoginRequest, db: Session = Depends(get_db)):
     token = create_access_token(user.id)
     return {"access_token": token}
 
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
-from google.oauth2 import id_token
-from google.auth.transport import requests
+@router.get("/session", response_model=SessionUser)
+def get_session(user: User = Depends(get_current_user)):
+    return SessionUser(
+        id=user.id,
+        email=user.email,
+        name=user.name,
+        auth_provider=user.auth_provider,
+    )
 
-from app.database import get_db
-from app.models import User
-from app.security import create_access_token
-from app.config import settings
+class GoogleLoginPayload(BaseModel):
+    id_token: str
 
-@router.post("/google")
-def google_auth(payload: dict, db: Session = Depends(get_db)):
-    token = payload.get("id_token")
-    if not token:
-        raise HTTPException(status_code=400, detail="Missing id_token")
 
+@router.post("/google/login")
+def google_auth(
+    payload: GoogleLoginPayload,
+    db: Session = Depends(get_db),
+):
+    # 1️⃣ Verify Google ID token
     try:
-        print("This is the Google Client: " + settings.GOOGLE_CLIENT_ID)
         idinfo = id_token.verify_oauth2_token(
-            token,
+            payload.id_token,
             requests.Request(),
             settings.GOOGLE_CLIENT_ID,
         )
     except ValueError:
         raise HTTPException(status_code=401, detail="Invalid Google token")
 
-    # ✅ THESE COME FROM GOOGLE, NOT REQUEST BODY
+    # Extra safety (recommended)
+    if idinfo["iss"] not in [
+        "accounts.google.com",
+        "https://accounts.google.com",
+    ]:
+        raise HTTPException(status_code=401, detail="Invalid token issuer")
+
     email = idinfo.get("email")
     google_id = idinfo.get("sub")
     name = idinfo.get("name", "")
@@ -77,14 +103,18 @@ def google_auth(payload: dict, db: Session = Depends(get_db)):
     if not email or not google_id:
         raise HTTPException(status_code=401, detail="Invalid Google token payload")
 
+    # 2️⃣ Check user
     user = db.query(User).filter(User.email == email).first()
 
+    # 3️⃣ EXISTING USER (Scenario 2)
     if user:
         if user.auth_provider != "google":
             raise HTTPException(
                 status_code=400,
-                detail="This account uses email & password login",
+                detail="This account uses email/password login",
             )
+
+    # 4️⃣ NEW USER (Scenario 1)
     else:
         user = User(
             email=email,
@@ -96,16 +126,17 @@ def google_auth(payload: dict, db: Session = Depends(get_db)):
         db.commit()
         db.refresh(user)
 
-    jwt_token = create_access_token(user.id)
-    return {"access_token": jwt_token}
-
-
-@router.get("/session", response_model=SessionUser)
-def get_session(user: User = Depends(get_current_user)):
-    return SessionUser(
-        id=user.id,
-        email=user.email,
-        name=user.name,
-        auth_provider=user.auth_provider,
+    # 5️⃣ Create JWT
+    access_token = create_access_token(
+        {"sub": str(user.id)}
     )
 
+    return {
+        "access_token": access_token,
+        "is_new_user": user.google_id == google_id,
+        "user": {
+            "id": user.id,
+            "email": user.email,
+            "name": user.name,
+        },
+    }
