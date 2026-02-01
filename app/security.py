@@ -1,5 +1,5 @@
 from passlib.context import CryptContext
-from jose import jwt
+from jose import jwt, JWTError
 from datetime import datetime, timedelta
 from app.config import settings
 from fastapi import Depends, HTTPException, status
@@ -13,8 +13,6 @@ security = HTTPBearer()
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 def hash_password(password: str):
-    print("🟢 SIGNUP password:", password)
-    print("🟢 SIGNUP password bytes:", len(password.encode("utf-8")))
     return pwd_context.hash(password)
 
 
