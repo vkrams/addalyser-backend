@@ -86,14 +86,6 @@ def get_google_ads_client(refresh_token: str, customer_id: str = None) -> Google
     """
     logging.basicConfig(level=logging.INFO, force=True)
 
-    # DEBUG: Print what we're receiving
-    print(f"=== DEBUG: Creating Google Ads Client ===")
-    print(f"Refresh token: {refresh_token[:30]}..." if refresh_token else "NO REFRESH TOKEN!")
-    print(f"Customer ID: {customer_id}")
-    print(f"Developer token exists: {bool(os.getenv('GOOGLE_ADS_DEVELOPER_TOKEN'))}")
-    print(f"Client ID: {os.getenv('GOOGLE_CLIENT_ID')}")
-    print(f"Client secret exists: {bool(os.getenv('GOOGLE_CLIENT_SECRET'))}")
-    
     try:
         if not refresh_token:
             raise HTTPException(status_code=400, detail="No refresh token provided")
