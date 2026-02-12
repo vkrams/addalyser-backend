@@ -12,6 +12,25 @@ import os
 from google.ads.googleads.client import GoogleAdsClient
 from google.ads.googleads.errors import GoogleAdsException
 import logging
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+class Settings(BaseSettings):
+
+    # Google Ads
+    GOOGLE_ADS_DEVELOPER_TOKEN: str
+    GOOGLE_CLIENT_ID: str
+    GOOGLE_CLIENT_SECRET: str
+
+    # Optional but recommended later
+    DATABASE_URL: str | None = None
+
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",  # prevents crashes from unused vars
+    )
+
+settings = Settings()
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -65,26 +84,55 @@ def get_google_ads_client(refresh_token: str, customer_id: str = None) -> Google
     """
     Create and return a Google Ads API client
     """
+    logging.basicConfig(level=logging.INFO, force=True)
+
+    # DEBUG: Print what we're receiving
+    print(f"=== DEBUG: Creating Google Ads Client ===")
+    print(f"Refresh token: {refresh_token[:30]}..." if refresh_token else "NO REFRESH TOKEN!")
+    print(f"Customer ID: {customer_id}")
+    print(f"Developer token exists: {bool(os.getenv('GOOGLE_ADS_DEVELOPER_TOKEN'))}")
+    print(f"Client ID: {os.getenv('GOOGLE_CLIENT_ID')}")
+    print(f"Client secret exists: {bool(os.getenv('GOOGLE_CLIENT_SECRET'))}")
+    
     try:
-        # Load credentials from environment or use provided values
+        if not refresh_token:
+            raise HTTPException(status_code=400, detail="No refresh token provided")
+            
+        # Build credentials dictionary
         credentials = {
-            "developer_token": os.getenv("GOOGLE_ADS_DEVELOPER_TOKEN"),
-            "client_id": os.getenv("GOOGLE_CLIENT_ID"),
-            "client_secret": os.getenv("GOOGLE_CLIENT_SECRET"),
+            
+            "developer_token": settings.GOOGLE_ADS_DEVELOPER_TOKEN,
+            "client_id": settings.GOOGLE_CLIENT_ID,
+            "client_secret": settings.GOOGLE_CLIENT_SECRET,
             "refresh_token": refresh_token,
+            "token_uri": "https://oauth2.googleapis.com/token",
             "use_proto_plus": True,
         }
         
+        # Debug: print all keys
+        print(f"Credentials keys: {list(credentials.keys())}")
+        for key, value in credentials.items():
+            if key == "refresh_token":
+                print(f"  {key}: {value[:30]}..." if value else f"  {key}: NONE")
+            elif key == "client_secret":
+                print(f"  {key}: {'***' if value else 'NONE'}")
+            else:
+                print(f"  {key}: {value}")
+        
         if customer_id:
-            credentials["login_customer_id"] = customer_id
+            credentials["login_customer_id"] = customer_id.replace("-", "")
+            print(f"Login customer ID: {credentials['login_customer_id']}")
             
+        print("Creating GoogleAdsClient...")
         client = GoogleAdsClient.load_from_dict(credentials)
+        print("✓ Google Ads client created successfully")
         return client
+        
     except Exception as e:
+        print(f"✗ Error creating client: {str(e)}")
         logger.error(f"Error creating Google Ads client: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to create Google Ads client: {str(e)}")
-
-
+    
 # Dependency to verify authorization
 async def verify_token(authorization: Optional[str] = Header(None)):
     """
@@ -118,8 +166,9 @@ async def list_accessible_customers(
     """
     try:
         client = get_google_ads_client(refresh_token)
-        customer_service = client.get_service("CustomerService")
+        customer_service = client.get_service("CustomerService")  # This should auto-detect the latest version
         
+        # Get accessible customers
         accessible_customers = customer_service.list_accessible_customers()
         customer_resource_names = accessible_customers.resource_names
         
@@ -141,6 +190,7 @@ async def list_accessible_customers(
                     WHERE customer.id = {customer_id}
                 """
                 
+                # Remove login_customer_id if not needed
                 response = ga_service.search(customer_id=customer_id, query=query)
                 
                 for row in response:
@@ -167,7 +217,6 @@ async def list_accessible_customers(
     except Exception as e:
         logger.error(f"Error listing customers: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
-
 
 @app.get("/api/campaigns/{customer_id}")
 async def get_campaigns(
