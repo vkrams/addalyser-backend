@@ -35,7 +35,6 @@ def get_google_ads_client(refresh_token: str, customer_id: str = None) -> Google
         }
 
         # Debug: print all keys
-        print(f"Credentials keys: {list(credentials.keys())}")
         for key, value in credentials.items():
             if key == "refresh_token":
                 print(f"  {key}: {value[:30]}..." if value else f"  {key}: NONE")
@@ -46,11 +45,8 @@ def get_google_ads_client(refresh_token: str, customer_id: str = None) -> Google
 
         if customer_id:
             credentials["login_customer_id"] = customer_id.replace("-", "")
-            print(f"Login customer ID: {credentials['login_customer_id']}")
 
-        print("Creating GoogleAdsClient...")
         client = GoogleAdsClient.load_from_dict(credentials)
-        print("✓ Google Ads client created successfully")
         return client
 
     except Exception as e:
